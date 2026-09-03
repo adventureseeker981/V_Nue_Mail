@@ -1,0 +1,6 @@
+[package]
+name = "V_Neu_mail"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
