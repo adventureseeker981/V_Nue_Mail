@@ -1,6 +1,11 @@
 [package]
 name = "V_Neu_mail"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+tokio = { version = "1.35", features = ["full"] }
+tokio-postgres = "0.7"
+uuid = { version = "1.6", features = ["v4"] }
+chrono = "0.4"
+regex = "1.10"
