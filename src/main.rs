@@ -4,6 +4,7 @@ use tokio_postgres::{NoTls, Error};
 use uuid::Uuid;
 use chrono::Utc;
 use regex::Regex;
+use std::sync::Arc;
 
 #[derive(Debug)]
 enum SessionStates {
@@ -45,9 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Database connection
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "host=localhost user=postgres password=postgres dbname=v_nue_mail".to_string());
-    
+
     let (client, connection) = tokio_postgres::connect(&db_url, NoTls).await?;
-    
+
+    // Wrap in Arc so it can be shared across spawned tokio tasks without cloning
+    let client = Arc::new(client);
+
+    // The connection object runs the background I/O loop; spawn it separately
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("Database connection error: {}", e);
@@ -55,18 +60,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     println!("Connected to database");
-    
+
     // Create tables if they don't exist
     create_tables(&client).await?;
-    
+
     let listener = TcpListener::bind("127.0.0.1:2525").await?;
     println!("SMTP server listening on 127.0.0.1:2525");
 
     loop {
         let (stream, addr) = listener.accept().await?;
         println!("New connection from: {}", addr);
-        
-        let client = client.clone();
+
+        // Arc::clone is cheap — just bumps a reference count, no deep copy
+        let client = Arc::clone(&client);
         tokio::spawn(async move {
             if let Err(e) = handle_client(stream, client).await {
                 eprintln!("Error handling client {}: {}", addr, e);
@@ -107,17 +113,17 @@ async fn create_tables(client: &tokio_postgres::Client) -> Result<(), Error> {
 
 async fn handle_client(
     mut stream: TcpStream,
-    client: tokio_postgres::Client,
+    client: Arc<tokio_postgres::Client>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
-    
-    // Send welcome message
+
+    // Send welcome banner
     writer.write_all(b"220 V_Nue Mail SMTP Server Ready\r\n").await?;
-    
+
     let mut state = SessionStates::Connected;
     let mut data = EmailData::new();
-    
+
     loop {
         let mut line = String::new();
         match reader.read_line(&mut line).await {
@@ -127,14 +133,13 @@ async fn handle_client(
                     SessionStates::Exit => break,
                     _ => handle_states(&mut state, &line, &mut data, &client).await,
                 };
-                
                 writer.write_all(response.as_bytes()).await?;
                 writer.flush().await?;
             }
             Err(_) => break,
         }
     }
-    
+
     Ok(())
 }
 
@@ -144,19 +149,20 @@ async fn handle_states(
     data: &mut EmailData,
     client: &tokio_postgres::Client,
 ) -> String {
-    if input.trim().to_ascii_lowercase() == "quit" {
+    if input.trim().to_ascii_uppercase() == "QUIT" {
         *state = SessionStates::Exit;
         return "221 Bye\r\n".to_string();
     }
 
     match state {
         SessionStates::Connected => {
-            if input.trim().to_ascii_uppercase().starts_with("EHLO") {
+            if input.trim().to_ascii_uppercase().starts_with("EHLO") || 
+               input.trim().to_ascii_uppercase().starts_with("HELO") {
                 data.server = input.trim()[4..].trim().to_string();
                 *state = SessionStates::Greeted;
                 "250 Hello\r\n".to_string()
             } else {
-                "503 Use 'EHLO' first\r\n".to_string()
+                "503 Use EHLO first\r\n".to_string()
             }
         }
         SessionStates::Greeted => {
@@ -165,7 +171,7 @@ async fn handle_states(
                 *state = SessionStates::AfterMailFrom;
                 "250 OK\r\n".to_string()
             } else {
-                "503 Use 'MAIL FROM' next\r\n".to_string()
+                "503 Use MAIL FROM next\r\n".to_string()
             }
         }
         SessionStates::AfterMailFrom => {
@@ -175,11 +181,12 @@ async fn handle_states(
                 *state = SessionStates::AfterRCPTto;
                 "250 OK\r\n".to_string()
             } else {
-                "503 Use 'RCPT TO' next\r\n".to_string()
+                "503 Use RCPT TO next\r\n".to_string()
             }
         }
         SessionStates::AfterRCPTto => {
             if input.trim().to_ascii_uppercase().starts_with("RCPT TO") {
+                // Multiple recipients allowed
                 let recipient = extract_email(input);
                 data.recipients.push(recipient);
                 "250 OK\r\n".to_string()
@@ -187,14 +194,14 @@ async fn handle_states(
                 *state = SessionStates::MailDataInput;
                 "354 End data with <CR><LF>.<CR><LF>\r\n".to_string()
             } else {
-                "503 Use 'RCPT TO' or 'DATA'\r\n".to_string()
+                "503 Use RCPT TO or DATA\r\n".to_string()
             }
         }
         SessionStates::MailDataInput => {
             if input.trim() == "." {
-                // Parse and save to database
+                // End of message — parse and persist
                 let (subject, body, raw_headers) = parse_message(&data.data_inside);
-                
+
                 for recipient in &data.recipients {
                     match save_message(
                         client,
@@ -208,7 +215,7 @@ async fn handle_states(
                         Err(e) => eprintln!("Error saving message: {}", e),
                     }
                 }
-                
+
                 data.clear();
                 *state = SessionStates::Greeted;
                 "250 Message accepted\r\n".to_string()
@@ -222,10 +229,12 @@ async fn handle_states(
 }
 
 fn extract_email(input: &str) -> String {
+    // Prefer the angle-bracket form: MAIL FROM:<addr@example.com>
     let re = Regex::new(r"<([^>]+)>").unwrap();
     if let Some(caps) = re.captures(input) {
         caps[1].to_string()
     } else {
+        // Fallback: take everything after the first colon
         input.split(':').nth(1)
             .unwrap_or("")
             .trim()
@@ -234,18 +243,23 @@ fn extract_email(input: &str) -> String {
 }
 
 fn parse_message(raw: &str) -> (String, String, String) {
-    let parts: Vec<&str> = raw.splitn(2, "\r\n\r\n").collect();
-    
-    let headers = parts.get(0).unwrap_or(&"").to_string();
-    let body = parts.get(1).unwrap_or(&"").to_string();
-    
+    // RFC 5322: headers and body are separated by a blank line.
+    // Handle both \r\n\r\n and \n\n line endings.
+    let (headers, body) = if let Some(pos) = raw.find("\r\n\r\n") {
+        (&raw[..pos], &raw[pos + 4..])
+    } else if let Some(pos) = raw.find("\n\n") {
+        (&raw[..pos], &raw[pos + 2..])
+    } else {
+        (&raw[..], "")
+    };
+
     let subject = headers
         .lines()
         .find(|line| line.to_ascii_lowercase().starts_with("subject:"))
         .map(|line| line[8..].trim().to_string())
         .unwrap_or_else(|| "(No Subject)".to_string());
-    
-    (subject, body, headers)
+
+    (subject, body.to_string(), headers.to_string())
 }
 
 async fn save_message(
@@ -256,6 +270,8 @@ async fn save_message(
     body: &str,
     raw_headers: &str,
 ) -> Result<(), Error> {
+    // Fix 1: uuid feature "with-uuid-1" in tokio-postgres lets Uuid bind as Postgres UUID type
+    // Fix 2: chrono feature "with-chrono-0_4" lets DateTime<Utc> bind as TIMESTAMPTZ
     client.execute(
         "INSERT INTO messages (id, sender, recipient, subject, body, raw_headers, status, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
@@ -270,6 +286,6 @@ async fn save_message(
             &Utc::now(),
         ],
     ).await?;
-    
+
     Ok(())
 }
