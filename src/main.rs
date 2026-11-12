@@ -6,7 +6,7 @@ use chrono::Utc;
 use regex::Regex;
 use std::sync::Arc;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum SessionStates {
     Connected,
     Greeted,
@@ -149,7 +149,7 @@ async fn handle_states(
     data: &mut EmailData,
     client: &tokio_postgres::Client,
 ) -> String {
-    if input.trim().to_ascii_uppercase() == "QUIT" {
+    if input.trim().to_ascii_uppercase() == "QUIT" && *state != SessionStates::MailDataInput{
         *state = SessionStates::Exit;
         return "221 Bye\r\n".to_string();
     }
@@ -202,23 +202,25 @@ async fn handle_states(
                 // End of message — parse and persist
                 let (subject, body, raw_headers) = parse_message(&data.data_inside);
 
-                for recipient in &data.recipients {
-                    match save_message(
-                        client,
-                        &data.mail_addr,
-                        recipient,
-                        &subject,
-                        &body,
-                        &raw_headers,
-                    ).await {
-                        Ok(_) => println!("Message saved: {} -> {}", data.mail_addr, recipient),
-                        Err(e) => eprintln!("Error saving message: {}", e),
-                    }
-                }
+                let response = match save_message(
+                                   client,
+                                   &data.mail_addr,
+                                   &data.recipients,
+                                   &subject,
+                                   &body,
+                                   &raw_headers,
+                               ).await {
+                                   Ok(_) => "250 Message accepted\r\n".to_string(),
+                                   Err(e) => {
+                                       // Print real error to server console, send generic to client
+                                       eprintln!("Database error saving message: {}", e);
+                                       "451 Requested action aborted: local error in processing\r\n".to_string()
+                                   }
+                               };
 
                 data.clear();
                 *state = SessionStates::Greeted;
-                "250 Message accepted\r\n".to_string()
+                response
             } else {
                 data.data_inside.push_str(input);
                 String::new()
@@ -265,7 +267,7 @@ fn parse_message(raw: &str) -> (String, String, String) {
 async fn save_message(
     client: &tokio_postgres::Client,
     sender: &str,
-    recipient: &str,
+    recipient: &[String],
     subject: &str,
     body: &str,
     raw_headers: &str,
@@ -273,17 +275,15 @@ async fn save_message(
     // Fix 1: uuid feature "with-uuid-1" in tokio-postgres lets Uuid bind as Postgres UUID type
     // Fix 2: chrono feature "with-chrono-0_4" lets DateTime<Utc> bind as TIMESTAMPTZ
     client.execute(
-        "INSERT INTO messages (id, sender, recipient, subject, body, raw_headers, status, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO messages (sender, recipient, subject, body, raw_headers, status)
+         SELECT $1, unnest($2::text[]), $3, $4, $5, $6",
         &[
-            &Uuid::new_v4(),
             &sender,
             &recipient,
             &subject,
             &body,
             &raw_headers,
             &"unread",
-            &Utc::now(),
         ],
     ).await?;
 

@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender TEXT NOT NULL,
-    recipient TEXT NOT NULL,
-    subject TEXT,
+    recipient TEXT[] NOT NULL,
+    subject TEXT DEFAULT '(NO SUBJECT)',
     body TEXT,
     raw_headers TEXT,
     status TEXT DEFAULT 'unread',
