@@ -68,7 +68,7 @@ telnet localhost 2525
 
 ---
 
-## 📦 Prerequisites
+## Prerequisites
 
 ### Required:
 - **Rust** (latest stable) - [Install](https://rustup.rs/)
