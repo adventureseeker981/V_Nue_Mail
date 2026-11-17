@@ -2,7 +2,7 @@
 
 A complete email infrastructure built from scratch to understand how email systems actually work.
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────┐         ┌──────────────┐         ┌─────────────────┐
@@ -34,7 +34,7 @@ A complete email infrastructure built from scratch to understand how email syste
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 - [Quick Start](#quick-start)
 - [Prerequisites](#prerequisites)
 - [Database Setup](#database-setup)
@@ -46,7 +46,7 @@ A complete email infrastructure built from scratch to understand how email syste
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # 1. Setup database
@@ -114,15 +114,15 @@ psql -U postgres -d v_nue_mail -c "\dt"
 
 ---
 
-## 🦀 Rust SMTP Server
+## Rust SMTP Server
 
 ### Features:
-✅ **Async/Concurrent** - Handles multiple connections with tokio  
-✅ **SMTP Protocol** - EHLO, MAIL FROM, RCPT TO, DATA, QUIT  
-✅ **Multi-recipient** - One email to multiple recipients  
-✅ **Message Parsing** - Extracts Subject from headers  
-✅ **PostgreSQL Integration** - Saves messages directly to database  
-✅ **Proper SMTP Replies** - 220, 250, 354, 503 response codes  
+ **Async/Concurrent** - Handles multiple connections with tokio  
+ **SMTP Protocol** - EHLO, MAIL FROM, RCPT TO, DATA, QUIT  
+ **Multi-recipient** - One email to multiple recipients  
+ **Message Parsing** - Extracts Subject from headers  
+ **PostgreSQL Integration** - Saves messages directly to database  
+ **Proper SMTP Replies** - 220, 250, 354, 503 response codes  
 
 ### Setup:
 ```bash
@@ -152,14 +152,14 @@ DATABASE_URL="host=localhost user=postgres password=postgres dbname=v_nue_mail"
 
 ---
 
-## 🌐 Node.js API
+## Node.js API
 
 ### Features:
-✅ **JWT Authentication** - Secure user sessions  
-✅ **User Management** - Signup/Login with bcrypt  
-✅ **Message CRUD** - List, Read, Update status  
-✅ **Folder Stats** - Inbox/Read/Unread/Trash counts  
-✅ **CORS Enabled** - Frontend can connect  
+**JWT Authentication** - Secure user sessions   
+**User Management** - Signup/Login with bcrypt  
+**Message CRUD** - List, Read, Update status  
+**Folder Stats** - Inbox/Read/Unread/Trash counts  
+**CORS Enabled** - Frontend can connect  
 
 ### Setup:
 ```bash
@@ -217,7 +217,7 @@ Response: { "inbox": 10, "read": 5, "unread": 5, "trashed": 2 }
 
 ---
 
-## ⚛️ React Frontend
+## React Frontend
 
 ### Status: **To Be Implemented**
 
@@ -244,7 +244,7 @@ npm start
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Test SMTP Server with Telnet:
 ```bash
@@ -302,9 +302,9 @@ SELECT email, display_name FROM users;
 
 ---
 
-## 📊 Project Status
+## Project Status
 
-### ✅ Completed (Phases 1-6):
+### Completed (Phases 1-6):
 - [x] Phase 1: Manual SMTP testing with telnet
 - [x] Phase 2: Blocking single-connection Rust server
 - [x] Phase 3: Async multi-connection with tokio
@@ -313,10 +313,10 @@ SELECT email, display_name FROM users;
 - [x] Phase 6: Rust → Postgres integration
 - [x] Phase 7: Node/Express API layer
 
-### ⏳ In Progress:
+### In Progress:
 - [ ] Phase 8: React frontend
 
-### 🔜 Future (Phase 9):
+###  Future (Phase 9):
 - [ ] TLS/SSL encryption
 - [ ] SMTP authentication
 - [ ] Real SMTP relay (send emails)
@@ -327,7 +327,7 @@ SELECT email, display_name FROM users;
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 V_Nue_Mail/
@@ -348,7 +348,7 @@ V_Nue_Mail/
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Database connection fails:
 ```bash
@@ -380,7 +380,7 @@ cargo build
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 This is a learning project. Feel free to:
 - Add features
@@ -391,7 +391,7 @@ This is a learning project. Feel free to:
 
 ---
 
-## 📝 Notes
+## Notes
 
 - SMTP server runs on **port 2525** (not 25) to avoid needing sudo
 - JWT tokens expire after **24 hours**
@@ -402,7 +402,7 @@ This is a learning project. Feel free to:
 
 ---
 
-## 📚 Resources
+## Resources
 
 - [SMTP RFC 5321](https://tools.ietf.org/html/rfc5321)
 - [Email Format RFC 5322](https://tools.ietf.org/html/rfc5322)
@@ -411,4 +411,4 @@ This is a learning project. Feel free to:
 
 ---
 
-**Built with ❤️ to understand email infrastructure from the ground up.**
+**Built with love to understand email infrastructure from the ground up.**
