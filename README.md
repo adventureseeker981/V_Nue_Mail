@@ -182,6 +182,10 @@ Database: `v_nue_mail` in PostgreSQL.
 | `status` | TEXT | DEFAULT 'unread' | Message state (`unread`, `read`, `trashed`) |
 | `created_at` | TIMESTAMPTZ | DEFAULT NOW() | Message timestamp |
 
+### Entity-Relationship Diagram & Database Normalization
+- **ER Diagram**: Refer to [er_diagram.png](er_diagram.png) for relational visual mapping.
+- **Normalization Analysis**: Refer to [Normalization.md](Normalization.md) for database normalization (1NF through BCNF).
+
 ---
 
 ## 9. Project Folder Structure & Key Files
