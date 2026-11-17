@@ -12,31 +12,37 @@
 
 require('dotenv').config();
 
-// The port and host where your teammate's Rust HTTP server runs
-const RUST_SERVER_URL = process.env.RUST_SERVER_URL || 'http://127.0.0.1:8080';
+// Helper to resolve the Rust Server internal base URL dynamically from environment bindings
+function getRustServerUrl() {
+  const url = process.env.RUST_SERVER_URL || 'http://127.0.0.1:8080';
+  return url.endsWith('/') ? url : `${url}/`;
+}
 
 /**
  * Check if the Rust server is alive and responding.
  */
 async function checkRustHealth() {
+  const baseUrl = getRustServerUrl();
+  const targetUrl = new URL('health', baseUrl);
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000); // 2-second timeout
 
-    const response = await fetch(`${RUST_SERVER_URL}/health`, {
+    const response = await fetch(targetUrl, {
       method: 'GET',
       signal: controller.signal,
     });
     clearTimeout(timeout);
 
     if (response.ok) {
-      return { online: true, url: RUST_SERVER_URL };
+      return { online: true, url: baseUrl };
     }
-    return { online: false, url: RUST_SERVER_URL, status: response.status };
+    return { online: false, url: baseUrl, status: response.status };
   } catch (error) {
     return {
       online: false,
-      url: RUST_SERVER_URL,
+      url: baseUrl,
       error: error.message || 'Connection refused',
     };
   }
@@ -52,13 +58,15 @@ async function checkRustHealth() {
  * @param {string} emailData.body - Message body
  */
 async function forwardEmailToRust(emailData) {
-  console.log(`[Rust Bridge] Forwarding email to Rust server at ${RUST_SERVER_URL}/api/process-mail...`);
+  const baseUrl = getRustServerUrl();
+  const targetUrl = new URL('api/process-mail', baseUrl);
+  console.log(`[Rust Bridge] Forwarding email to Rust server at ${targetUrl}...`);
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000); // 3-second timeout
 
-    const response = await fetch(`${RUST_SERVER_URL}/api/process-mail`, {
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -91,13 +99,16 @@ async function forwardEmailToRust(emailData) {
     return {
       success: false,
       rustAvailable: false,
-      message: `Rust server at ${RUST_SERVER_URL} is currently unreachable (${error.message}).`,
+      message: `Rust server at ${baseUrl} is currently unreachable (${error.message}).`,
     };
   }
 }
 
 module.exports = {
-  RUST_SERVER_URL,
+  get RUST_SERVER_URL() {
+    return getRustServerUrl();
+  },
+  getRustServerUrl,
   checkRustHealth,
   forwardEmailToRust,
 };

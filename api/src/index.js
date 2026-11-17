@@ -81,9 +81,9 @@ app.use((err, _req, res, _next) => {
 });
 
 // ---------------------------------------------------------------------------
-// Start the Express Server
+// Start the Express Server (only when run directly in dev/standalone, not on Vercel or in test)
 // ---------------------------------------------------------------------------
-if (process.env.NODE_ENV !== 'test') {
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   const server = app.listen(PORT, () => {
     console.log(`===============================================`);
     console.log(`🚀 Encrypto Express API running on port ${PORT}`);
