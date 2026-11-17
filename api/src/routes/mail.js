@@ -28,7 +28,8 @@ async function findOwnedMessage(messageId, userEmail) {
   const result = await query(
     `SELECT * FROM messages
      WHERE id = $1
-       AND LOWER(recipient) = LOWER($2)`,
+       AND LOWER(recipient) = LOWER($2)
+       AND recipient_deleted IS NOT TRUE`,
     [messageId, userEmail]
   );
   return result.rows[0] || null;
@@ -44,6 +45,8 @@ router.get('/', async (req, res, next) => {
       `SELECT id, sender, recipient, subject, status, created_at
        FROM messages
        WHERE LOWER(recipient) = LOWER($1)
+         AND recipient_trash IS NOT TRUE
+         AND recipient_deleted IS NOT TRUE
        ORDER BY created_at DESC`,
       [req.user.email]
     );

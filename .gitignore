@@ -1,5 +1,15 @@
 /target
 
-# Node
+# Node API
 api/node_modules/
 api/.env
+
+# Node Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,83 @@
+// prisma/schema.prisma — Prisma Schema for Encrypto Database
+//
+// Maps to the PostgreSQL database (v_nue_mail)
+// Matches the tables: users, messages
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User model — stores user accounts with hashed passwords
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique
+  password_hash String
+  display_name  String?
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@map("users")
+}
+
+// Message model — stores encrypted messages and metadata
+model Message {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sender              String
+  recipient           String
+  subject             String?   @default("(NO SUBJECT)")
+  body                String?
+  body_html           String?
+  cc                  String?   @default("")
+  bcc                 String?   @default("")
+  raw_headers         String?
+  status              String?   @default("unread")
+  recipient_trash     Boolean?  @default(false)
+  sender_trash        Boolean?  @default(false)
+  recipient_deleted   Boolean?  @default(false)
+  sender_deleted      Boolean?  @default(false)
+  recipient_starred   Boolean?  @default(false)
+  sender_starred      Boolean?  @default(false)
+  recipient_important Boolean?  @default(false)
+  sender_important    Boolean?  @default(false)
+  recipient_archived  Boolean?  @default(false)
+  sender_archived     Boolean?  @default(false)
+  recipient_spam      Boolean?  @default(false)
+  snoozed_until       DateTime? @db.Timestamptz(6)
+  scheduled_for       DateTime? @db.Timestamptz(6)
+  is_confidential     Boolean?  @default(false)
+  attachments         Json?     @default("[]")
+  category            String?   @default("primary")
+  labels              String[]  @default([])
+  is_draft            Boolean?  @default(false)
+  created_at          DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@map("messages")
+}
+
+// Custom Labels model
+model CustomLabel {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  name       String
+  color      String?   @default("#299EFF")
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@unique([user_id, name])
+  @@map("custom_labels")
+}
+
+// User Settings model
+model UserSetting {
+  user_id            String    @id @db.Uuid
+  theme              String?   @default("dark")
+  density            String?   @default("comfortable")
+  signature          String?   @default("")
+  keyboard_shortcuts Boolean?  @default(true)
+  updated_at         DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@map("user_settings")
+}
