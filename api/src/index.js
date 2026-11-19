@@ -21,27 +21,67 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ---------------------------------------------------------------------------
-// Middleware
+// Middleware & CORS Configuration
 // ---------------------------------------------------------------------------
 
-// Enable CORS for frontend development servers
-app.use(
-  cors({
-    origin: [
-      'http://localhost:3000', // React default (Vite configured for 3000)
-      'http://localhost:5173', // Vite default
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-    ],
-    credentials: true,
-  })
-);
+// Allowed origins for CORS (local development + production Vercel frontend)
+const ALLOWED_ORIGINS = [
+  'https://encrypto-frontend-zeta.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+
+if (process.env.CLIENT_URL) {
+  ALLOWED_ORIGINS.push(process.env.CLIENT_URL.trim().replace(/\/+$/, ''));
+}
+if (process.env.FRONTEND_URL) {
+  ALLOWED_ORIGINS.push(process.env.FRONTEND_URL.trim().replace(/\/+$/, ''));
+}
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow non-browser requests (e.g. mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    const cleanOrigin = origin.trim().replace(/\/+$/, '');
+
+    // Allow explicitly defined origins
+    if (ALLOWED_ORIGINS.includes(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    // Allow Vercel preview deployments for this project (e.g., https://encrypto-frontend-*.vercel.app)
+    if (/^https:\/\/encrypto-frontend[a-z0-9-]*\.vercel\.app$/.test(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    // Origin not allowed (do not set Access-Control-Allow-Origin header)
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  maxAge: 86400, // 24 hours preflight cache
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
-// Health check route
+// Health & Root status routes
 // ---------------------------------------------------------------------------
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'Encrypto Express API',
+    health: '/api/health',
+  });
+});
+
 app.get('/api/health', async (_req, res) => {
   const rustHealth = await checkRustHealth();
 
@@ -51,7 +91,7 @@ app.get('/api/health', async (_req, res) => {
     port: PORT,
     timestamp: new Date().toISOString(),
     rustBridge: {
-      targetUrl: RUST_SERVER_URL,
+      targetUrl: rustHealth.url || null,
       status: rustHealth.online ? 'connected' : 'offline',
       details: rustHealth,
     },

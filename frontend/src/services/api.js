@@ -1,7 +1,17 @@
 // src/services/api.js - Comprehensive API Client for Encrypto
-// Communicates with Express Backend on port 3001 via Vite proxy /api
+// Centralized API Base URL configuration:
+// In production on Vercel, read from VITE_API_BASE_URL (e.g. 'https://encrypto-inky.vercel.app').
+// In local development, fall back to '/api' so the Vite dev server proxies to http://localhost:3001.
 
-const API_BASE_URL = '/api';
+function resolveApiBaseUrl() {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (!envUrl) return '/api';
+
+  const clean = envUrl.trim().replace(/\/+$/, '');
+  return clean.endsWith('/api') ? clean : `${clean}/api`;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 // Helper function to get the stored JWT token
 function getAuthHeader() {
@@ -529,4 +539,13 @@ export async function updateSettings(settings) {
 
   const data = await parseJsonResponse(response);
   return data.settings;
+}
+
+// ---------------------------------------------------------------------------
+// Health Check
+// ---------------------------------------------------------------------------
+
+export async function checkBackendHealth() {
+  const response = await fetch(`${API_BASE_URL}/health`);
+  return await parseJsonResponse(response);
 }

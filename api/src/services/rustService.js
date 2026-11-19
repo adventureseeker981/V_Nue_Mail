@@ -14,7 +14,8 @@ require('dotenv').config();
 
 // Helper to resolve the Rust Server internal base URL dynamically from environment bindings
 function getRustServerUrl() {
-  const url = process.env.RUST_SERVER_URL || 'http://127.0.0.1:8080';
+  const url = process.env.RUST_SERVER_URL;
+  if (!url) return null;
   return url.endsWith('/') ? url : `${url}/`;
 }
 
@@ -23,6 +24,15 @@ function getRustServerUrl() {
  */
 async function checkRustHealth() {
   const baseUrl = getRustServerUrl();
+  if (!baseUrl) {
+    return {
+      online: false,
+      configured: false,
+      error: 'Rust mail server is not configured (RUST_SERVER_URL is unset).',
+      message: 'Rust mail server is not deployed or configured yet.',
+    };
+  }
+
   const targetUrl = new URL('health', baseUrl);
 
   try {
@@ -36,12 +46,13 @@ async function checkRustHealth() {
     clearTimeout(timeout);
 
     if (response.ok) {
-      return { online: true, url: baseUrl };
+      return { online: true, configured: true, url: baseUrl };
     }
-    return { online: false, url: baseUrl, status: response.status };
+    return { online: false, configured: true, url: baseUrl, status: response.status };
   } catch (error) {
     return {
       online: false,
+      configured: true,
       url: baseUrl,
       error: error.message || 'Connection refused',
     };
@@ -59,6 +70,15 @@ async function checkRustHealth() {
  */
 async function forwardEmailToRust(emailData) {
   const baseUrl = getRustServerUrl();
+  if (!baseUrl) {
+    console.log('[Rust Bridge] RUST_SERVER_URL is not set. Rust mail server is not deployed yet.');
+    return {
+      success: false,
+      rustAvailable: false,
+      message: 'Rust mail server is not deployed or configured (RUST_SERVER_URL is unset) and currently unreachable. Message saved to database only.',
+    };
+  }
+
   const targetUrl = new URL('api/process-mail', baseUrl);
   console.log(`[Rust Bridge] Forwarding email to Rust server at ${targetUrl}...`);
 
