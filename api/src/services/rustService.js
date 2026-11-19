@@ -7,14 +7,15 @@
 // 2. Forwards email processing to the Rust server via HTTP.
 // 3. Receives Rust response and sends it back to React.
 //
-// If the Rust server is not running or offline, this file provides clear
-// error reporting and fallback handling so the application does not crash.
+// If the Rust server is not running, offline, or returns 404 (e.g. deployed on Vercel
+// where background TCP SMTP listeners are not supported), this file provides clear
+// error reporting and fallback handling so the application persists emails reliably.
 
 require('dotenv').config();
 
 // Helper to resolve the Rust Server internal base URL dynamically from environment bindings
 function getRustServerUrl() {
-  const url = process.env.RUST_SERVER_URL;
+  const url = process.env.RUST_MAIL_SERVER_URL || process.env.RUST_SERVER_URL;
   if (!url) return null;
   return url.endsWith('/') ? url : `${url}/`;
 }
@@ -28,7 +29,7 @@ async function checkRustHealth() {
     return {
       online: false,
       configured: false,
-      error: 'Rust mail server is not configured (RUST_SERVER_URL is unset).',
+      error: 'Rust mail server is not configured (RUST_MAIL_SERVER_URL is unset).',
       message: 'Rust mail server is not deployed or configured yet.',
     };
   }
@@ -48,13 +49,20 @@ async function checkRustHealth() {
     if (response.ok) {
       return { online: true, configured: true, url: baseUrl };
     }
-    return { online: false, configured: true, url: baseUrl, status: response.status };
+    return {
+      online: false,
+      configured: true,
+      url: baseUrl,
+      status: response.status,
+      message: `Rust mail server at ${baseUrl} returned HTTP ${response.status}. Rust SMTP servers require persistent TCP listeners (e.g. Render, Railway, Fly.io, or VPS) and cannot run as Vercel serverless HTTP functions.`,
+    };
   } catch (error) {
     return {
       online: false,
       configured: true,
       url: baseUrl,
       error: error.message || 'Connection refused',
+      message: `Failed to connect to Rust mail server at ${baseUrl}: ${error.message || 'Connection refused'}. Message saved to PostgreSQL database.`,
     };
   }
 }
@@ -71,11 +79,11 @@ async function checkRustHealth() {
 async function forwardEmailToRust(emailData) {
   const baseUrl = getRustServerUrl();
   if (!baseUrl) {
-    console.log('[Rust Bridge] RUST_SERVER_URL is not set. Rust mail server is not deployed yet.');
+    console.log('[Rust Bridge] RUST_MAIL_SERVER_URL is not set. Rust mail server is not deployed yet.');
     return {
       success: false,
       rustAvailable: false,
-      message: 'Rust mail server is not deployed or configured (RUST_SERVER_URL is unset) and currently unreachable. Message saved to database only.',
+      message: 'Rust mail server is not configured (RUST_MAIL_SERVER_URL is unset). Message saved to database only.',
     };
   }
 
@@ -104,13 +112,20 @@ async function forwardEmailToRust(emailData) {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(`Rust server returned status ${response.status}`);
+      console.warn(`[Rust Bridge Warning] Rust server returned status ${response.status}`);
+      return {
+        success: false,
+        rustAvailable: false,
+        statusCode: response.status,
+        message: `Rust server at ${baseUrl} returned HTTP ${response.status} (Vercel does not support persistent SMTP sockets). Message saved to database only.`,
+      };
     }
 
     const rustResult = await response.json().catch(() => ({ status: 'accepted' }));
     console.log('[Rust Bridge] Email processed successfully by Rust server.');
     return {
       success: true,
+      rustAvailable: true,
       data: rustResult,
     };
   } catch (error) {
@@ -119,7 +134,7 @@ async function forwardEmailToRust(emailData) {
     return {
       success: false,
       rustAvailable: false,
-      message: `Rust server at ${baseUrl} is currently unreachable (${error.message}).`,
+      message: `Rust server at ${baseUrl} is currently unreachable (${error.message}). Message saved to database only.`,
     };
   }
 }
@@ -132,4 +147,3 @@ module.exports = {
   checkRustHealth,
   forwardEmailToRust,
 };
-

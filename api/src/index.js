@@ -1,10 +1,12 @@
 // src/index.js — Encrypto Express Application Entry Point
 //
 // Mounts:
-//   /api/auth    → registration, login, logout, profile
-//   /api/emails  → inbox, sent, send, read, delete
-//   /api/mail    → backward compatibility with previous mail routes
-//   /api/health  → system health check (database & rust bridge status)
+//   /api/auth (and /auth)       → registration, login, logout, profile
+//   /api/emails (and /emails)   → inbox, sent, send, read, delete
+//   /api/labels (and /labels)   → custom folder tags and labels
+//   /api/settings (and /settings) → user preferences and mailbox settings
+//   /api/mail (and /mail)       → backward compatibility with previous mail routes
+//   /api/health (and /health)   → system health check (database & rust bridge status)
 
 require('dotenv').config();
 
@@ -15,10 +17,25 @@ const emailsRouter = require('./routes/emails');
 const mailRouter = require('./routes/mail');
 const labelsRouter = require('./routes/labels');
 const settingsRouter = require('./routes/settings');
+const { signup, login, getMe, logout } = require('./controllers/authController');
+const { requireAuth } = require('./middleware/auth');
 const { checkRustHealth, RUST_SERVER_URL } = require('./services/rustService');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ---------------------------------------------------------------------------
+// Vercel Serverless URL Normalization Middleware
+// ---------------------------------------------------------------------------
+app.use((req, _res, next) => {
+  // If Vercel or an API gateway rewrote req.url to the physical file path,
+  // restore the original incoming path from x-forwarded-uri or x-original-url.
+  const forwarded = req.headers['x-forwarded-uri'] || req.headers['x-original-url'] || req.headers['x-matched-path'];
+  if (forwarded && (req.url === '/src/index.js' || req.url === '/index.js' || req.url === '/src' || req.url.startsWith('/src/index.js?') || req.url.startsWith('/index.js?'))) {
+    req.url = forwarded;
+  }
+  next();
+});
 
 // ---------------------------------------------------------------------------
 // Middleware & CORS Configuration
@@ -74,7 +91,7 @@ app.use(express.json());
 // ---------------------------------------------------------------------------
 // Health & Root status routes
 // ---------------------------------------------------------------------------
-app.get('/', (_req, res) => {
+app.get(['/', '/api'], (_req, res) => {
   res.json({
     status: 'ok',
     service: 'Encrypto Express API',
@@ -82,7 +99,7 @@ app.get('/', (_req, res) => {
   });
 });
 
-app.get('/api/health', async (_req, res) => {
+app.get(['/api/health', '/health'], async (_req, res) => {
   const rustHealth = await checkRustHealth();
 
   res.json({
@@ -99,17 +116,28 @@ app.get('/api/health', async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Mount Route Handlers
+// Mount Route Handlers (Dual Prefix: /api/* and direct /*)
 // ---------------------------------------------------------------------------
-app.use('/api/auth', authRouter);
-app.use('/api/emails', emailsRouter);
-app.use('/api/labels', labelsRouter);
-app.use('/api/settings', settingsRouter);
-app.use('/api/mail', mailRouter); // Retained for backward compatibility
+app.use(['/api/auth', '/auth'], authRouter);
+app.use(['/api/emails', '/emails'], emailsRouter);
+app.use(['/api/labels', '/labels'], labelsRouter);
+app.use(['/api/settings', '/settings'], settingsRouter);
+app.use(['/api/mail', '/mail'], mailRouter); // Retained for backward compatibility
+
+// Direct root auth aliases for extra client flexibility
+app.post(['/api/signup', '/signup', '/api/register', '/register'], signup);
+app.post(['/api/login', '/login'], login);
+app.post(['/api/logout', '/logout'], logout);
+app.get(['/api/me', '/me'], requireAuth, getMe);
 
 // 404 Handler
-app.use((_req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+app.use((req, res) => {
+  console.warn(`[404 Not Found] ${req.method} ${req.originalUrl || req.url}`);
+  res.status(404).json({
+    error: 'Route not found',
+    requestedUrl: req.originalUrl || req.url,
+    method: req.method,
+  });
 });
 
 // Centralized error handler

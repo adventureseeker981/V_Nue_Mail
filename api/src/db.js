@@ -37,7 +37,18 @@ const rawUrl = process.env.DATABASE_URL ||
 
 const connectionString = buildConnectionString(rawUrl);
 
-const pool = new Pool({ connectionString });
+const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
+
+const poolConfig = {
+  connectionString,
+};
+
+// Enable rejectUnauthorized: false for remote cloud databases (e.g. Supabase, Neon, Render Postgres)
+if (!isLocalhost && !process.env.PGSSLMODE?.includes('disable')) {
+  poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+const pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
   console.error('Unexpected database error:', err.message);
@@ -52,4 +63,4 @@ async function query(text, params) {
   return result;
 }
 
-module.exports = { query, pool };
+module.exports = { query, pool, buildConnectionString };
