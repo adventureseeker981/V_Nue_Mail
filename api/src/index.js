@@ -144,8 +144,28 @@ app.use((req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
   console.error('[Error Handler]', err.message);
-  // Never leak database stack traces to the frontend
-  res.status(500).json({ error: 'Internal server error' });
+
+  // If database connection fails (e.g. DATABASE_URL unset or pointing to unreachable host)
+  if (err.message && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND') || err.code === 'ECONNREFUSED' || err.code === '28P01')) {
+    return res.status(503).json({
+      error: 'Database connection failed. Please ensure DATABASE_URL is set in your Vercel project environment variables to a cloud PostgreSQL instance (e.g. Neon, Supabase, Render).',
+      code: err.code || 'DB_CONNECTION_ERROR',
+      details: err.message,
+    });
+  }
+
+  // If table does not exist
+  if (err.code === '42P01') {
+    return res.status(500).json({
+      error: 'Database table missing. Please run setup_db.sql in your PostgreSQL database.',
+      code: 'DB_TABLE_MISSING',
+    });
+  }
+
+  res.status(500).json({
+    error: 'Internal server error',
+    message: err.message,
+  });
 });
 
 // ---------------------------------------------------------------------------
