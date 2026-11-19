@@ -102,11 +102,35 @@ app.get(['/', '/api'], (_req, res) => {
 app.get(['/api/health', '/health'], async (_req, res) => {
   const rustHealth = await checkRustHealth();
 
+  let dbStatus = 'unconfigured';
+  let dbMessage = 'DATABASE_URL is not set in environment variables';
+  let dbConnected = false;
+
+  if (process.env.DATABASE_URL) {
+    try {
+      const { query } = require('./db');
+      await query('SELECT 1');
+      dbStatus = 'connected';
+      dbConnected = true;
+      dbMessage = 'PostgreSQL database connection verified';
+    } catch (err) {
+      dbStatus = 'connection_error';
+      dbConnected = false;
+      dbMessage = `Failed to connect to PostgreSQL: ${err.message}`;
+    }
+  }
+
   res.json({
     status: 'ok',
     service: 'Encrypto Express API',
     port: PORT,
     timestamp: new Date().toISOString(),
+    database: {
+      status: dbStatus,
+      connected: dbConnected,
+      configured: Boolean(process.env.DATABASE_URL),
+      message: dbMessage,
+    },
     rustBridge: {
       targetUrl: rustHealth.url || null,
       status: rustHealth.online ? 'connected' : 'offline',

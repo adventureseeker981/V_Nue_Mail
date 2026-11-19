@@ -1,10 +1,10 @@
 // src/services/api.js - Comprehensive API Client for Encrypto
 // Centralized API Base URL configuration:
-// In production on Vercel, read from VITE_API_BASE_URL (e.g. 'https://encrypto-inky.vercel.app').
+// In production on Vercel, read from VITE_API_URL or VITE_API_BASE_URL (e.g. 'https://encrypto-inky.vercel.app').
 // In local development, fall back to '/api' so the Vite dev server proxies to http://localhost:3001.
 
 function resolveApiBaseUrl() {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
   if (!envUrl) return '/api';
 
   const clean = envUrl.trim().replace(/\/+$/, '');
@@ -34,21 +34,21 @@ async function parseJsonResponse(response) {
   }
 
   if (!response.ok) {
-    if (
-      !data ||
-      text.includes('ECONNREFUSED') ||
-      response.status === 502 ||
-      response.status === 503 ||
-      response.status === 504
-    ) {
-      throw new Error('Unable to connect to the server. Please try again.');
+    // 1. If backend returned a structured JSON error, ALWAYS preserve and display it
+    if (data && (data.error || data.message)) {
+      throw new Error(data.error || data.message);
     }
 
-    const message =
-      data?.error ||
-      data?.message ||
-      'Unable to connect to the server. Please try again.';
-    throw new Error(message);
+    // 2. Only if non-JSON error (e.g. HTML 502/504 gateway error from edge proxy)
+    if (response.status === 502 || response.status === 504) {
+      throw new Error(`Server gateway error (${response.status}): The backend is currently unreachable. Please try again shortly.`);
+    }
+
+    if (response.status === 503) {
+      throw new Error('Service unavailable (503): The server is temporarily unable to handle the request.');
+    }
+
+    throw new Error(`Request failed with status ${response.status}`);
   }
 
   return data || {};
@@ -67,7 +67,8 @@ export async function loginUser(email, password) {
       body: JSON.stringify({ email, password }),
     });
   } catch (netErr) {
-    throw new Error('Unable to connect to the server. Please try again.');
+    console.error('[API Network Error]', netErr);
+    throw new Error(`Unable to reach the server at ${API_BASE_URL}. Please check your internet connection or verify the backend is online.`);
   }
 
   const data = await parseJsonResponse(response);
@@ -95,7 +96,8 @@ export async function signupUser(displayName, email, password) {
       }),
     });
   } catch (netErr) {
-    throw new Error('Unable to connect to the server. Please try again.');
+    console.error('[API Network Error]', netErr);
+    throw new Error(`Unable to reach the server at ${API_BASE_URL}. Please check your internet connection or verify the backend is online.`);
   }
 
   const data = await parseJsonResponse(response);

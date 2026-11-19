@@ -42,6 +42,14 @@ async function signup(req, res, next) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
+    // Guard: Verify DATABASE_URL is configured on Vercel
+    if (!process.env.DATABASE_URL && process.env.VERCEL) {
+      return res.status(503).json({
+        error: 'Database is not configured. Please add DATABASE_URL in Vercel Project Settings (Environment Variables) to connect your PostgreSQL database.',
+        code: 'DATABASE_UNCONFIGURED',
+      });
+    }
+
     // 2. Check if email already exists in PostgreSQL
     const existingUser = await query(
       'SELECT id FROM users WHERE LOWER(email) = LOWER($1)',
@@ -90,6 +98,14 @@ async function login(req, res, next) {
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    // Guard: Verify DATABASE_URL is configured on Vercel
+    if (!process.env.DATABASE_URL && process.env.VERCEL) {
+      return res.status(503).json({
+        error: 'Database is not configured. Please add DATABASE_URL in Vercel Project Settings (Environment Variables) to connect your PostgreSQL database.',
+        code: 'DATABASE_UNCONFIGURED',
+      });
     }
 
     // 1. Look up user by email

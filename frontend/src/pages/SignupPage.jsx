@@ -51,10 +51,8 @@ export default function SignupPage({ onSignupSuccess }) {
       const msg = err.message || '';
       if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists')) {
         setError('This email is already registered. Please sign in.');
-      } else if (msg.toLowerCase().includes('unable to connect') || msg.toLowerCase().includes('connect') || msg.toLowerCase().includes('server')) {
-        setError('Unable to connect to the server. Please try again.');
       } else {
-        setError(msg || 'Unable to connect to the server. Please try again.');
+        setError(msg || 'Signup failed. Please try again.');
       }
     } finally {
       setLoading(false);
