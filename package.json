@@ -1,0 +1,13 @@
+{
+  "name": "encrypto",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npm run build --prefix frontend",
+    "start": "npm start --prefix api",
+    "test": "npm test --prefix api"
+  },
+  "dependencies": {
+    "@neon/config": "^1.14.6",
+    "@neon/env": "^2.1.9"
+  }
+}

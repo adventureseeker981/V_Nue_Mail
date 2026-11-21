@@ -117,7 +117,7 @@ async function forwardEmailToRust(emailData) {
         success: false,
         rustAvailable: false,
         statusCode: response.status,
-        message: `Rust server at ${baseUrl} returned HTTP ${response.status} (Vercel does not support persistent SMTP sockets). Message saved to database only.`,
+        message: `Rust server at ${baseUrl} is unreachable (returned HTTP ${response.status}). Message saved to database only.`,
       };
     }
 

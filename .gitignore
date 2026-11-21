@@ -8,8 +8,13 @@ api/.env
 frontend/node_modules/
 frontend/dist/
 frontend/.env
+.env
+.env.local
+.env.*.local
 
 # OS / Editor files
 .DS_Store
 Thumbs.db
 
+.neon
+node_modules/

@@ -7,7 +7,17 @@
 //
 // The Rust SMTP server uses libpq format; we convert it to a URL for the pg module.
 
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables from .env and .env.local (supports root and api directory invocation)
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 const { Pool } = require('pg');
 
 function buildConnectionString(raw) {

@@ -568,6 +568,10 @@ async function sendEmail(req, res, next) {
       ? recipient.map((r) => r.trim().toLowerCase()).filter(Boolean).join(', ')
       : recipient.toLowerCase().trim();
 
+    const recipientArr = Array.isArray(recipient)
+      ? recipient.map((r) => r.trim().toLowerCase()).filter(Boolean)
+      : cleanRecipient.split(',').map((r) => r.trim().toLowerCase()).filter(Boolean);
+
     const cleanCc = Array.isArray(cc)
       ? cc.map((c) => c.trim().toLowerCase()).filter(Boolean).join(', ')
       : (cc || '').toLowerCase().trim();
@@ -604,7 +608,7 @@ async function sendEmail(req, res, next) {
          WHERE id = $11 AND LOWER(sender) = $12
          RETURNING *`,
         [
-          cleanRecipient,
+          recipientArr,
           cleanCc,
           cleanBcc,
           cleanSubject,
@@ -634,7 +638,7 @@ async function sendEmail(req, res, next) {
          RETURNING *`,
         [
           sender,
-          cleanRecipient,
+          recipientArr,
           cleanCc,
           cleanBcc,
           cleanSubject,
@@ -685,6 +689,10 @@ async function saveDraft(req, res, next) {
       ? recipient.map((r) => r.trim().toLowerCase()).filter(Boolean).join(', ')
       : (recipient || '').toLowerCase().trim();
 
+    const recipientArr = Array.isArray(recipient)
+      ? recipient.map((r) => r.trim().toLowerCase()).filter(Boolean)
+      : (cleanRecipient ? cleanRecipient.split(',').map((r) => r.trim().toLowerCase()).filter(Boolean) : []);
+
     const cleanCc = Array.isArray(cc)
       ? cc.map((c) => c.trim().toLowerCase()).filter(Boolean).join(', ')
       : (cc || '').toLowerCase().trim();
@@ -710,7 +718,7 @@ async function saveDraft(req, res, next) {
          WHERE id = $10 AND LOWER(sender) = $11 AND is_draft = TRUE
          RETURNING *`,
         [
-          cleanRecipient,
+          recipientArr,
           cleanCc,
           cleanBcc,
           cleanSubject,
@@ -739,7 +747,7 @@ async function saveDraft(req, res, next) {
          RETURNING *`,
         [
           sender,
-          cleanRecipient,
+          recipientArr,
           cleanCc,
           cleanBcc,
           cleanSubject,
