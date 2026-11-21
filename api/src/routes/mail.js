@@ -20,15 +20,20 @@ const router = express.Router();
 // All mail routes require authentication
 router.use(requireAuth);
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ---------------------------------------------------------------------------
 // Helper: fetch a single message and verify it belongs to the current user.
 // Returns the row or null — never throws a 404 itself (caller decides).
 // ---------------------------------------------------------------------------
 async function findOwnedMessage(messageId, userEmail) {
+  if (!messageId || !UUID_REGEX.test(String(messageId).trim())) {
+    return null;
+  }
   const result = await query(
     `SELECT * FROM messages
      WHERE id = $1
-       AND LOWER(recipient) = LOWER($2)
+       AND LOWER(recipient::text) LIKE '%' || LOWER($2) || '%'
        AND recipient_deleted IS NOT TRUE`,
     [messageId, userEmail]
   );
@@ -44,7 +49,7 @@ router.get('/', async (req, res, next) => {
     const result = await query(
       `SELECT id, sender, recipient, subject, status, created_at
        FROM messages
-       WHERE LOWER(recipient) = LOWER($1)
+       WHERE LOWER(recipient::text) LIKE '%' || LOWER($1) || '%'
          AND recipient_trash IS NOT TRUE
          AND recipient_deleted IS NOT TRUE
        ORDER BY created_at DESC`,
@@ -88,7 +93,7 @@ router.patch('/:id/read', async (req, res, next) => {
 
     const result = await query(
       `UPDATE messages SET status = 'read'
-       WHERE id = $1 AND LOWER(recipient) = LOWER($2)
+       WHERE id = $1 AND LOWER(recipient::text) LIKE '%' || LOWER($2) || '%'
        RETURNING id, status`,
       [req.params.id, req.user.email]
     );
@@ -111,7 +116,7 @@ router.patch('/:id/unread', async (req, res, next) => {
 
     const result = await query(
       `UPDATE messages SET status = 'unread'
-       WHERE id = $1 AND LOWER(recipient) = LOWER($2)
+       WHERE id = $1 AND LOWER(recipient::text) LIKE '%' || LOWER($2) || '%'
        RETURNING id, status`,
       [req.params.id, req.user.email]
     );
@@ -128,9 +133,13 @@ router.patch('/:id/unread', async (req, res, next) => {
 // ---------------------------------------------------------------------------
 router.delete('/:id', async (req, res, next) => {
   try {
+    if (!UUID_REGEX.test(String(req.params.id).trim())) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
     const result = await query(
       `DELETE FROM messages
-       WHERE id = $1 AND LOWER(recipient) = LOWER($2)
+       WHERE id = $1 AND LOWER(recipient::text) LIKE '%' || LOWER($2) || '%'
        RETURNING id`,
       [req.params.id, req.user.email]
     );

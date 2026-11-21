@@ -25,6 +25,8 @@ import {
   toggleImportant,
   archiveEmail,
   deleteEmail,
+  deleteEmailPermanently,
+  restoreEmail,
   emptyTrash,
   markEmailAsRead,
   markEmailAsUnread,
@@ -37,6 +39,7 @@ import {
 
 import {
   RefreshCw,
+  RotateCcw,
   Trash2,
   Archive,
   AlertOctagon,
@@ -341,11 +344,29 @@ export default function DashboardPage({ user, onLogout }) {
 
   const handleDeleteRow = async (id) => {
     try {
+      if (currentFolder === 'trash') {
+        if (window.confirm('Permanently delete this email? This cannot be undone.')) {
+          await deleteEmailPermanently(id);
+          setEmails((prev) => prev.filter((m) => m.id !== id));
+          loadCounts();
+        }
+        return;
+      }
       await deleteEmail(id, currentFolder);
       setEmails((prev) => prev.filter((m) => m.id !== id));
       loadCounts();
     } catch (err) {
-      alert('Error moving to trash: ' + err.message);
+      alert((currentFolder === 'trash' ? 'Error deleting permanently: ' : 'Error moving to trash: ') + err.message);
+    }
+  };
+
+  const handleRestoreRow = async (id) => {
+    try {
+      await restoreEmail(id);
+      setEmails((prev) => prev.filter((m) => m.id !== id));
+      loadCounts();
+    } catch (err) {
+      alert('Error restoring email: ' + err.message);
     }
   };
 
@@ -633,36 +654,63 @@ export default function DashboardPage({ user, onLogout }) {
                         {selectedIds.size} selected
                       </span>
 
-                      {currentFolder !== 'sent' && (
-                        <button
-                          type="button"
-                          className="toolbar-btn"
-                          onClick={() => executeBulk('archive')}
-                          title="Archive (E)"
-                        >
-                          <Archive size={16} strokeWidth={1.8} />
-                        </button>
-                      )}
+                      {currentFolder === 'trash' ? (
+                        <>
+                          <button
+                            type="button"
+                            className="toolbar-btn"
+                            onClick={() => executeBulk('restore')}
+                            title="Restore selected emails"
+                          >
+                            <RotateCcw size={16} strokeWidth={1.8} color="#299EFF" />
+                          </button>
+                          <button
+                            type="button"
+                            className="toolbar-btn danger-hover"
+                            onClick={() => {
+                              if (window.confirm(`Permanently delete ${selectedIds.size} selected email(s)? This cannot be undone.`)) {
+                                executeBulk('delete_permanent');
+                              }
+                            }}
+                            title="Delete forever"
+                          >
+                            <Trash2 size={16} strokeWidth={1.8} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {currentFolder !== 'sent' && (
+                            <button
+                              type="button"
+                              className="toolbar-btn"
+                              onClick={() => executeBulk('archive')}
+                              title="Archive (E)"
+                            >
+                              <Archive size={16} strokeWidth={1.8} />
+                            </button>
+                          )}
 
-                      {currentFolder !== 'spam' && (
-                        <button
-                          type="button"
-                          className="toolbar-btn"
-                          onClick={() => executeBulk('spam')}
-                          title="Report spam"
-                        >
-                          <AlertOctagon size={16} strokeWidth={1.8} />
-                        </button>
-                      )}
+                          {currentFolder !== 'spam' && (
+                            <button
+                              type="button"
+                              className="toolbar-btn"
+                              onClick={() => executeBulk('spam')}
+                              title="Report spam"
+                            >
+                              <AlertOctagon size={16} strokeWidth={1.8} />
+                            </button>
+                          )}
 
-                      <button
-                        type="button"
-                        className="toolbar-btn danger-hover"
-                        onClick={() => executeBulk('trash')}
-                        title="Delete (#)"
-                      >
-                        <Trash2 size={16} strokeWidth={1.8} />
-                      </button>
+                          <button
+                            type="button"
+                            className="toolbar-btn danger-hover"
+                            onClick={() => executeBulk('trash')}
+                            title="Delete (#)"
+                          >
+                            <Trash2 size={16} strokeWidth={1.8} />
+                          </button>
+                        </>
+                      )}
 
                       <div className="toolbar-divider" />
 
@@ -892,6 +940,7 @@ export default function DashboardPage({ user, onLogout }) {
                       onToggleImportant={handleToggleImportant}
                       onArchive={handleArchive}
                       onDelete={handleDeleteRow}
+                      onRestore={handleRestoreRow}
                       onToggleRead={handleToggleRead}
                       onSnooze={handleSnooze}
                     />

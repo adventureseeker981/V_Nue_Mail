@@ -22,10 +22,43 @@ const { query } = require('../db');
 const { forwardEmailToRust } = require('../services/rustService');
 
 // ---------------------------------------------------------------------------
+// Helper: UUID format validator
+// ---------------------------------------------------------------------------
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ---------------------------------------------------------------------------
+// Helper: Check if user is recipient (handles TEXT[] array or string)
+// ---------------------------------------------------------------------------
+function checkIsRecipient(recipientField, userEmail) {
+  if (!recipientField || !userEmail) return false;
+  const target = userEmail.toLowerCase().trim();
+  if (Array.isArray(recipientField)) {
+    return recipientField.some((r) => {
+      if (!r) return false;
+      const str = String(r).toLowerCase().trim();
+      return str === target || str.includes(target);
+    });
+  }
+  const str = String(recipientField).toLowerCase().trim();
+  return str === target || str.includes(target);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Check if user is sender
+// ---------------------------------------------------------------------------
+function checkIsSender(senderField, userEmail) {
+  if (!senderField || !userEmail) return false;
+  return String(senderField).toLowerCase().trim() === userEmail.toLowerCase().trim();
+}
+
+// ---------------------------------------------------------------------------
 // Helper: Verify if user owns the message (as recipient or sender)
 // and has not permanently deleted it from their account.
 // ---------------------------------------------------------------------------
 async function findAuthorizedMessage(messageId, userEmail) {
+  if (!messageId || !UUID_REGEX.test(String(messageId).trim())) {
+    return null;
+  }
   const result = await query(
     `SELECT * FROM messages
      WHERE id = $1
@@ -43,15 +76,45 @@ async function findAuthorizedMessage(messageId, userEmail) {
 // Helper: Format message row with user-specific flags (starred, important, etc.)
 // ---------------------------------------------------------------------------
 function formatMessageForUser(row, userEmail) {
-  const isSender = row.sender && row.sender.toLowerCase() === userEmail;
+  if (!row) return null;
+  const isSender = checkIsSender(row.sender, userEmail);
+  const isRecipient = checkIsRecipient(row.recipient, userEmail);
+
+  let isStarred = false;
+  let isImportant = false;
+  let isArchived = false;
+  let isTrashed = false;
+  let originalFolder = isSender ? 'sent' : 'inbox';
+
+  if (isSender && !isRecipient) {
+    isStarred = !!row.sender_starred;
+    isImportant = !!row.sender_important;
+    isArchived = !!row.sender_archived;
+    isTrashed = !!row.sender_trash;
+    originalFolder = 'sent';
+  } else if (!isSender && isRecipient) {
+    isStarred = !!row.recipient_starred;
+    isImportant = !!row.recipient_important;
+    isArchived = !!row.recipient_archived;
+    isTrashed = !!row.recipient_trash;
+    originalFolder = 'inbox';
+  } else {
+    // Both sender and recipient (e.g. self-sent email)
+    isStarred = !!(row.recipient_starred || row.sender_starred);
+    isImportant = !!(row.recipient_important || row.sender_important);
+    isArchived = !!(row.recipient_archived || row.sender_archived);
+    isTrashed = !!(row.recipient_trash || row.sender_trash);
+    originalFolder = row.recipient_trash ? 'inbox' : (row.sender_trash ? 'sent' : 'inbox');
+  }
+
   return {
     ...row,
-    is_starred: isSender ? !!row.sender_starred : !!row.recipient_starred,
-    is_important: isSender ? !!row.sender_important : !!row.recipient_important,
-    is_archived: isSender ? !!row.sender_archived : !!row.recipient_archived,
-    is_trashed: isSender ? !!row.sender_trash : !!row.recipient_trash,
+    is_starred: isStarred,
+    is_important: isImportant,
+    is_archived: isArchived,
+    is_trashed: isTrashed,
     is_spam: !!row.recipient_spam,
-    original_folder: isSender ? 'sent' : 'inbox',
+    original_folder: originalFolder,
   };
 }
 
@@ -835,16 +898,22 @@ async function toggleStar(req, res, next) {
     const message = await findAuthorizedMessage(req.params.id, userEmail);
     if (!message) return res.status(404).json({ error: 'Email not found' });
 
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
+    const isSender = checkIsSender(message.sender, userEmail);
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
     let result;
-    if (isSender) {
+    if (isSender && !isRecipient) {
       result = await query(
         `UPDATE messages SET sender_starred = NOT COALESCE(sender_starred, FALSE) WHERE id = $1 RETURNING *`,
         [req.params.id]
       );
-    } else {
+    } else if (!isSender && isRecipient) {
       result = await query(
         `UPDATE messages SET recipient_starred = NOT COALESCE(recipient_starred, FALSE) WHERE id = $1 RETURNING *`,
+        [req.params.id]
+      );
+    } else {
+      result = await query(
+        `UPDATE messages SET recipient_starred = NOT COALESCE(recipient_starred, FALSE), sender_starred = NOT COALESCE(sender_starred, FALSE) WHERE id = $1 RETURNING *`,
         [req.params.id]
       );
     }
@@ -865,16 +934,22 @@ async function toggleImportant(req, res, next) {
     const message = await findAuthorizedMessage(req.params.id, userEmail);
     if (!message) return res.status(404).json({ error: 'Email not found' });
 
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
+    const isSender = checkIsSender(message.sender, userEmail);
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
     let result;
-    if (isSender) {
+    if (isSender && !isRecipient) {
       result = await query(
         `UPDATE messages SET sender_important = NOT COALESCE(sender_important, FALSE) WHERE id = $1 RETURNING *`,
         [req.params.id]
       );
-    } else {
+    } else if (!isSender && isRecipient) {
       result = await query(
         `UPDATE messages SET recipient_important = NOT COALESCE(recipient_important, FALSE) WHERE id = $1 RETURNING *`,
+        [req.params.id]
+      );
+    } else {
+      result = await query(
+        `UPDATE messages SET recipient_important = NOT COALESCE(recipient_important, FALSE), sender_important = NOT COALESCE(sender_important, FALSE) WHERE id = $1 RETURNING *`,
         [req.params.id]
       );
     }
@@ -895,11 +970,13 @@ async function archiveEmail(req, res, next) {
     const message = await findAuthorizedMessage(req.params.id, userEmail);
     if (!message) return res.status(404).json({ error: 'Email not found' });
 
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
+    const isSender = checkIsSender(message.sender, userEmail);
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
+    if (isRecipient) {
+      await query(`UPDATE messages SET recipient_archived = TRUE WHERE id = $1`, [req.params.id]);
+    }
     if (isSender) {
       await query(`UPDATE messages SET sender_archived = TRUE WHERE id = $1`, [req.params.id]);
-    } else {
-      await query(`UPDATE messages SET recipient_archived = TRUE WHERE id = $1`, [req.params.id]);
     }
 
     return res.status(200).json({ message: 'Email archived' });
@@ -918,11 +995,13 @@ async function unarchiveEmail(req, res, next) {
     const message = await findAuthorizedMessage(req.params.id, userEmail);
     if (!message) return res.status(404).json({ error: 'Email not found' });
 
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
+    const isSender = checkIsSender(message.sender, userEmail);
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
+    if (isRecipient) {
+      await query(`UPDATE messages SET recipient_archived = FALSE WHERE id = $1`, [req.params.id]);
+    }
     if (isSender) {
       await query(`UPDATE messages SET sender_archived = FALSE WHERE id = $1`, [req.params.id]);
-    } else {
-      await query(`UPDATE messages SET recipient_archived = FALSE WHERE id = $1`, [req.params.id]);
     }
 
     return res.status(200).json({ message: 'Email moved to inbox' });
@@ -1135,9 +1214,9 @@ async function deleteEmail(req, res, next) {
       return res.status(404).json({ error: 'Email not found or access denied' });
     }
 
-    const isRecipient = message.recipient && message.recipient.toLowerCase().includes(userEmail);
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
-    const requestedFolder = (req.query.folder || req.body.folder || '').toLowerCase();
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
+    const isSender = checkIsSender(message.sender, userEmail);
+    const requestedFolder = (req.query.folder || req.body?.folder || '').toLowerCase();
 
     if (requestedFolder === 'sent' && isSender) {
       await query(`UPDATE messages SET sender_trash = TRUE WHERE id = $1`, [req.params.id]);
@@ -1171,8 +1250,8 @@ async function restoreEmail(req, res, next) {
       return res.status(404).json({ error: 'Email not found or access denied' });
     }
 
-    const isRecipient = message.recipient && message.recipient.toLowerCase().includes(userEmail);
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
+    const isSender = checkIsSender(message.sender, userEmail);
 
     if (isRecipient && message.recipient_trash) {
       await query(`UPDATE messages SET recipient_trash = FALSE WHERE id = $1`, [req.params.id]);
@@ -1199,8 +1278,8 @@ async function deleteEmailPermanently(req, res, next) {
       return res.status(404).json({ error: 'Email not found or access denied' });
     }
 
-    const isRecipient = message.recipient && message.recipient.toLowerCase().includes(userEmail);
-    const isSender = message.sender && message.sender.toLowerCase() === userEmail;
+    const isRecipient = checkIsRecipient(message.recipient, userEmail);
+    const isSender = checkIsSender(message.sender, userEmail);
 
     if (isRecipient) {
       await query(`UPDATE messages SET recipient_deleted = TRUE WHERE id = $1`, [req.params.id]);

@@ -9,6 +9,7 @@ import {
   MailOpen,
   Clock,
   Paperclip,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function EmailItem({
@@ -22,6 +23,7 @@ export default function EmailItem({
   onToggleImportant,
   onArchive,
   onDelete,
+  onRestore,
   onToggleRead,
   onSnooze,
 }) {
@@ -174,11 +176,22 @@ export default function EmailItem({
             </button>
           )}
 
+          {folder === 'trash' && onRestore && (
+            <button
+              type="button"
+              className="quick-action-btn"
+              onClick={() => onRestore(email.id)}
+              title="Restore to Inbox / Sent"
+            >
+              <RotateCcw size={15} strokeWidth={1.8} color="#299EFF" />
+            </button>
+          )}
+
           <button
             type="button"
             className="quick-action-btn danger-hover"
             onClick={() => onDelete(email.id)}
-            title="Delete / Trash"
+            title={folder === 'trash' ? 'Delete permanently' : 'Delete / Trash'}
           >
             <Trash2 size={15} strokeWidth={1.8} />
           </button>

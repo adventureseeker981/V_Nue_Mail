@@ -176,7 +176,7 @@ app.use((req, res) => {
 // Centralized error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
-  console.error('[Error Handler]', err.message);
+  console.error('[Error Handler]', err.stack || err.message || err);
 
   // If database connection fails (e.g. DATABASE_URL unset or pointing to unreachable host)
   if (err.message && (err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND') || err.code === 'ECONNREFUSED' || err.code === '28P01')) {
@@ -195,9 +195,11 @@ app.use((err, _req, res, _next) => {
     });
   }
 
-  res.status(500).json({
-    error: 'Internal server error',
-    message: err.message,
+  const statusCode = err.status || err.statusCode || 500;
+  res.status(statusCode).json({
+    error: err.message || 'Internal server error',
+    message: err.message || 'An unexpected error occurred',
+    code: err.code || (statusCode === 500 ? 'INTERNAL_ERROR' : 'ERROR'),
   });
 });
 
